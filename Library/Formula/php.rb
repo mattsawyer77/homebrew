@@ -1,18 +1,20 @@
 require 'formula'
 
 def mysql_installed?
-    `which mysql_config`.length > 0
+  `which mysql_config`.length > 0
 end
 
 class Php <Formula
-  url 'http://www.php.net/get/php-5.3.2.tar.gz/from/this/mirror'
+  url 'http://www.php.net/get/php-5.3.5.tar.gz/from/this/mirror'
   homepage 'http://php.net/'
-  md5 '4480d7c6d6b4a86de7b8ec8f0c2d1871'
-  version '5.3.2'
+  md5 'fb727a3ac72bf0ce37e1a20468a7bb81'
+  version '5.3.5'
 
   # So PHP extensions don't report missing symbols
-  skip_clean 'bin'
+  skip_clean ['bin', 'sbin']
 
+
+  depends_on 'libxml2'
   depends_on 'jpeg'
   depends_on 'libpng'
   depends_on 'mcrypt'
@@ -20,10 +22,23 @@ class Php <Formula
   if ARGV.include? '--with-mysql'
     depends_on 'mysql' => :recommended unless mysql_installed?
   end
+  if ARGV.include? '--with-fpm'
+    depends_on 'libevent'
+  end
+  if ARGV.include? '--with-pgsql'
+    depends_on 'postgresql'
+  end
+  if ARGV.include? '--with-mssql'
+    depends_on 'freetds'
+  end
   
   def options
    [
-     ['--with-mysql', 'Build with MySQL support.']
+     ['--with-mysql', 'Include MySQL support'],
+     ['--with-pgsql', 'Include PostgreSQL support'],
+     ['--with-mssql', 'Include MSSQL-DB support'],
+     ['--with-fpm', 'Enable building of the fpm SAPI executable'],
+     ['--with-apache', 'Build shared Apache 2.0 Handler module']
    ]
   end
 
@@ -36,6 +51,7 @@ class Php <Formula
       "--prefix=#{prefix}",
       "--disable-debug",
       "--disable-dependency-tracking",
+      "--with-config-file-path=#{prefix}/etc",
       "--with-iconv-dir=/usr",
       "--enable-exif",
       "--enable-soap",
@@ -62,37 +78,54 @@ class Php <Formula
       "--with-xmlrpc",
       "--with-iodbc",
       "--with-kerberos=/usr",
-      "--with-libxml-dir=/usr",
+      "--with-libxml-dir=#{Formula.factory('libxml2').prefix}",
       "--with-xsl=/usr",
       "--with-curl=/usr",
-      "--with-apxs2=/usr/sbin/apxs",
-      "--libexecdir=#{prefix}/libexec",
       "--with-gd",
       "--enable-gd-native-ttf",
       "--with-mcrypt=#{Formula.factory('mcrypt').prefix}",
       "--with-jpeg-dir=#{Formula.factory('jpeg').prefix}",
       "--with-png-dir=#{Formula.factory('libpng').prefix}",
       "--with-gettext=#{Formula.factory('gettext').prefix}",
-      "--with-tidy"
+      "--with-tidy",
+      "--mandir=#{man}"
     ]
-    
-    # For some reason freetype.h can't be found when building on 10.5
-    if (MACOS_VERSION >= 10.6) && (File.exist? "/usr/X11/lib")
-      args.push "--with-freetype-dir=/usr/X11/lib"
+
+    # Bail if both php-fpm and apxs are enabled
+    # http://bugs.php.net/bug.php?id=52419
+    if (ARGV.include? '--with-fpm') && (ARGV.include? '--with-apache')
+      onoe "You can only enable PHP FPM or Apache, not both"
+      puts "http://bugs.php.net/bug.php?id=52419"
+      exit 99
     end
-    
+
+    # Enable PHP FPM
+    if ARGV.include? '--with-fpm'
+      args.push "--enable-fpm"
+    end
+
+    # Build Apache module
+    if ARGV.include? '--with-apache'
+      args.push "--with-apxs2=/usr/sbin/apxs"
+      args.push "--libexecdir=#{prefix}/libexec"
+    end
+
     if ARGV.include? '--with-mysql'
-      if mysql_installed?
-        args.push "--with-mysql-sock=/tmp/mysql.sock"
-        args.push "--with-mysqli=mysqlnd"
-        args.push "--with-mysql=mysqlnd"
-        args.push "--with-pdo-mysql=mysqlnd"
-      else
-        args.push "--with-mysqli=#{Formula.factory('mysql').bin}/mysql_config}"
-        args.push "--with-mysql=#{Formula.factory('mysql').prefix}"
-        args.push "--with-pdo-mysql=#{Formula.factory('mysql').prefix}"
-      end
+      args.push "--with-mysql-sock=/tmp/mysql.sock"
+      args.push "--with-mysqli=mysqlnd"
+      args.push "--with-mysql=mysqlnd"
+      args.push "--with-pdo-mysql=mysqlnd"
     end
+
+    if ARGV.include? '--with-pgsql'
+      args.push "--with-pgsql=#{Formula.factory('postgresql').prefix}"
+      args.push "--with-pdo-pgsql=#{Formula.factory('postgresql').prefix}"
+    end
+
+    if ARGV.include? '--with-mssql'
+      args.push "--with-mssql=#{Formula.factory('freetds').prefix}"
+    end
+
     return args
   end
   
@@ -100,68 +133,34 @@ class Php <Formula
     ENV.O3 # Speed things up
     system "./configure", *configure_args
 
-    # Use Homebrew prefix for the Apache libexec folder
-    inreplace "Makefile",
-      "INSTALL_IT = $(mkinstalldirs) '$(INSTALL_ROOT)/usr/libexec/apache2' && $(mkinstalldirs) '$(INSTALL_ROOT)/private/etc/apache2' && /usr/sbin/apxs -S LIBEXECDIR='$(INSTALL_ROOT)/usr/libexec/apache2' -S SYSCONFDIR='$(INSTALL_ROOT)/private/etc/apache2' -i -a -n php5 libs/libphp5.so",
-      "INSTALL_IT = $(mkinstalldirs) '#{prefix}/libexec/apache2' && $(mkinstalldirs) '$(INSTALL_ROOT)/private/etc/apache2' && /usr/sbin/apxs -S LIBEXECDIR='#{prefix}/libexec/apache2' -S SYSCONFDIR='$(INSTALL_ROOT)/private/etc/apache2' -i -a -n php5 libs/libphp5.so"
+    if ARGV.include? '--with-apache'
+      # Use Homebrew prefix for the Apache libexec folder
+      inreplace "Makefile",
+        "INSTALL_IT = $(mkinstalldirs) '$(INSTALL_ROOT)/usr/libexec/apache2' && $(mkinstalldirs) '$(INSTALL_ROOT)/private/etc/apache2' && /usr/sbin/apxs -S LIBEXECDIR='$(INSTALL_ROOT)/usr/libexec/apache2' -S SYSCONFDIR='$(INSTALL_ROOT)/private/etc/apache2' -i -a -n php5 libs/libphp5.so",
+        "INSTALL_IT = $(mkinstalldirs) '#{prefix}/libexec/apache2' && $(mkinstalldirs) '$(INSTALL_ROOT)/private/etc/apache2' && /usr/sbin/apxs -S LIBEXECDIR='#{prefix}/libexec/apache2' -S SYSCONFDIR='$(INSTALL_ROOT)/private/etc/apache2' -i -a -n php5 libs/libphp5.so"
+    end
     
     system "make"
     system "make install"
 
-    system "cp ./php.ini-production #{prefix}/lib/php.ini"
+    system "cp ./php.ini-production #{prefix}/etc/php.ini"
   end
 
  def caveats; <<-EOS
    For 10.5 and Apache:
     Apache needs to run in 32-bit mode. You can either force Apache to start 
-    in 32-bit mode or you can thin the Apache executable. The following page 
-    has instructions for both methods:
-    http://code.google.com/p/modwsgi/wiki/InstallationOnMacOSX
+    in 32-bit mode or you can thin the Apache executable.
    
    To enable PHP in Apache add the following to httpd.conf and restart Apache:
     LoadModule php5_module    #{prefix}/libexec/apache2/libphp5.so
 
-   Edits you will most likely want to make to php.ini
-    Date:
-      You will want to set date.timezone setting to your timezone.
-      http://www.php.net/manual/en/timezones.php
-
-    MySQL:
-      pdo_mysql.default_socket = /tmp/mysql.sock
-      mysql.default_port = 3306
-      mysql.default_socket = /tmp/mysql.sock
-      mysqli.default_socket = /tmp/mysql.sock
-
-      The php.ini file can be found in: 
-      #{prefix}/lib/php.ini
+    The php.ini file can be found in:
+      #{prefix}/etc/php.ini
    EOS
  end
 end
 
 __END__
-diff -Naur php-5.3.0/ext/iconv/iconv.c php/ext/iconv/iconv.c
---- php-5.3.0/ext/iconv/iconv.c	2009-03-16 22:31:04.000000000 -0700
-+++ php/ext/iconv/iconv.c	2009-07-15 14:40:09.000000000 -0700
-@@ -51,9 +51,6 @@
- #include <gnu/libc-version.h>
- #endif
- 
--#ifdef HAVE_LIBICONV
--#undef iconv
--#endif
- 
- #include "ext/standard/php_smart_str.h"
- #include "ext/standard/base64.h"
-@@ -182,9 +179,6 @@
- }
- /* }}} */
- 
--#ifdef HAVE_LIBICONV
--#define iconv libiconv
--#endif
- 
- /* {{{ typedef enum php_iconv_enc_scheme_t */
- typedef enum _php_iconv_enc_scheme_t {
 diff -Naur php-5.3.2/ext/tidy/tidy.c php/ext/tidy/tidy.c 
 --- php-5.3.2/ext/tidy/tidy.c	2010-02-12 04:36:40.000000000 +1100
 +++ php/ext/tidy/tidy.c	2010-05-23 19:49:47.000000000 +1000
