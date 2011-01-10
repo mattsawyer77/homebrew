@@ -31,6 +31,7 @@ class Php <Formula
   if ARGV.include? '--with-mssql'
     depends_on 'freetds'
   end
+  depends_on 'readline' unless ARGV.include? '--without-readline'
   
   def options
    [
@@ -38,7 +39,8 @@ class Php <Formula
      ['--with-pgsql', 'Include PostgreSQL support'],
      ['--with-mssql', 'Include MSSQL-DB support'],
      ['--with-fpm', 'Enable building of the fpm SAPI executable'],
-     ['--with-apache', 'Build shared Apache 2.0 Handler module']
+     ['--with-apache', 'Build shared Apache 2.0 Handler module'],
+     ['--without-readline', 'Build without readline support']
    ]
   end
 
@@ -125,6 +127,9 @@ class Php <Formula
     if ARGV.include? '--with-mssql'
       args.push "--with-mssql=#{Formula.factory('freetds').prefix}"
     end
+
+
+    args.push "--with-readline=#{Formula.factory('readline').prefix}" unless ARGV.include? '--without-readline'
 
     return args
   end
