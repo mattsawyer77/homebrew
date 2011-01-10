@@ -54,7 +54,7 @@ class Php <Formula
       "--prefix=#{prefix}",
       "--disable-debug",
       "--disable-dependency-tracking",
-      "--with-config-file-path=#{prefix}/etc",
+      "--with-config-file-path=#{etc}",
       "--with-iconv-dir=/usr",
       "--enable-exif",
       "--enable-soap",
@@ -159,19 +159,19 @@ class Php <Formula
     system "make"
     system "make install"
 
-    system "cp ./php.ini-production #{prefix}/etc/php.ini"
+    system "cp ./php.ini-production #{etc}/php.ini" unless File.exists? "#{etc}/php.ini"
   end
 
  def caveats; <<-EOS
-   For 10.5 and Apache:
+For 10.5 and Apache:
     Apache needs to run in 32-bit mode. You can either force Apache to start 
     in 32-bit mode or you can thin the Apache executable.
    
-   To enable PHP in Apache add the following to httpd.conf and restart Apache:
+To enable PHP in Apache add the following to httpd.conf and restart Apache:
     LoadModule php5_module    #{prefix}/libexec/apache2/libphp5.so
 
-    The php.ini file can be found in:
-      #{prefix}/etc/php.ini
+The php.ini file can be found in:
+    #{etc}/php.ini
    EOS
  end
 end
