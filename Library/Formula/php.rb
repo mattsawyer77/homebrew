@@ -31,6 +31,9 @@ class Php <Formula
   if ARGV.include? '--with-mssql'
     depends_on 'freetds'
   end
+  if ARGV.include? '--with-intl'
+    depends_on 'icu4c'
+  end
   depends_on 'readline' unless ARGV.include? '--without-readline'
   
   def options
