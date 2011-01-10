@@ -40,6 +40,7 @@ class Php <Formula
      ['--with-mssql', 'Include MSSQL-DB support'],
      ['--with-fpm', 'Enable building of the fpm SAPI executable'],
      ['--with-apache', 'Build shared Apache 2.0 Handler module'],
+     ['--with-intl', 'Include internationalization support'],
      ['--without-readline', 'Build without readline support']
    ]
   end
@@ -128,6 +129,10 @@ class Php <Formula
       args.push "--with-mssql=#{Formula.factory('freetds').prefix}"
     end
 
+    if ARGV.include? '--with-intl'
+      args.push "--enable-intl"
+      args.push "--with-icu-dir=#{Formula.factory('icu4c').prefix}"
+    end
 
     args.push "--with-readline=#{Formula.factory('readline').prefix}" unless ARGV.include? '--without-readline'
 
@@ -144,7 +149,13 @@ class Php <Formula
         "INSTALL_IT = $(mkinstalldirs) '$(INSTALL_ROOT)/usr/libexec/apache2' && $(mkinstalldirs) '$(INSTALL_ROOT)/private/etc/apache2' && /usr/sbin/apxs -S LIBEXECDIR='$(INSTALL_ROOT)/usr/libexec/apache2' -S SYSCONFDIR='$(INSTALL_ROOT)/private/etc/apache2' -i -a -n php5 libs/libphp5.so",
         "INSTALL_IT = $(mkinstalldirs) '#{prefix}/libexec/apache2' && $(mkinstalldirs) '$(INSTALL_ROOT)/private/etc/apache2' && /usr/sbin/apxs -S LIBEXECDIR='#{prefix}/libexec/apache2' -S SYSCONFDIR='$(INSTALL_ROOT)/private/etc/apache2' -i -a -n php5 libs/libphp5.so"
     end
-    
+
+    if ARGV.include? '--with-intl'
+      inreplace 'Makefile' do |s|
+        s.change_make_var! "EXTRA_LIBS", "\\1 -lstdc++"
+      end
+    end
+
     system "make"
     system "make install"
 
